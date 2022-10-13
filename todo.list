@@ -1,21 +1,21 @@
+[공통]
+* cat3 label encoder로 인코딩
+- df_train['cat3'].unique()에 encoder fit하고 train할 때 한 번, test할 때 한 번 사용해야 함!
 
 [Image]
-- 이미지 크기 맞추기
-- 그림 / 사진 / 포스터 분류 (사이즈로 판단?)
+* 이미지 크기 맞추기
 
-
-
-
+*그림 / 사진 / 포스터 분류 (사이즈로 판단?)
 
 
 
 [NLP]
 
-- 라벨 잘못 분류됨
+* 라벨 잘못 분류됨
 https://dacon.io/competitions/official/235978/talkboard/407093?page=1&dtype=recent
 
 
-[합치기]
+[병합]
 
 
 

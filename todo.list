@@ -14,6 +14,9 @@
 * 라벨 잘못 분류됨
 https://dacon.io/competitions/official/235978/talkboard/407093?page=1&dtype=recent
 
+* python file에서 고친 거 ipynb에도 반영하기
+
+* train_model()에서 pt 관련 오류 수정하기
 
 [병합]
 

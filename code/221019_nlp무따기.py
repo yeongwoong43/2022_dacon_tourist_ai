@@ -25,6 +25,80 @@ def set_seed(args):
     torch.cuda.manual_seed(args.seed)
 
 # %%
+import re
+class Preprocessor:
+  def __init__(self, sample):
+    self.sample = sample
+    self.text_init = sample['overview'].tolist()
+    self.text = self.text_init.copy()
+    # print(self.text_init)
+  
+
+  def del_special_char(self):
+    for i, str in enumerate(self.text):
+      loop = True
+
+      while(loop):
+        loop = False
+        if '<' in str:
+          try:
+            sp_char = str[str.find('<'):str.find('>')+1]
+            if re.compile('[ㄱ-ㅎ ㅏ-ㅣ 가-힣]+').sub('', str)!=str:
+              print(i, sp_char)
+              str = ' '.join(str.split(sp_char))
+              self.text[i] = str
+              loop = True
+          except: pass
+        if '(' in str:
+          try:
+            sp_char = str[str.find('('):str.find(')')+1]
+            if re.compile('[ㄱ-ㅎ ㅏ-ㅣ 가-힣]+').sub('', str)!=str:
+              print(i, sp_char)
+              str = ' '.join(str.split(sp_char))
+              self.text[i] = str
+              loop = True
+          except: pass
+        if '[' in str:
+          try:
+            sp_char = str[str.find('['):str.find(']')+1]
+            if re.compile('[ㄱ-ㅎ ㅏ-ㅣ 가-힣]+').sub('', str)!=str:
+              print(i, sp_char)
+              str = ' '.join(str.split(sp_char))
+              self.text[i] = str
+              loop = True
+          except: pass
+        if '\n' in str:
+          print('Deleted line-changer')
+          str = ' '.join(str.split('\n'))
+          self.text[i] = str
+          loop = True
+  
+
+  def rearrange_sentence(self):
+    # self.text 구두점 기준으로 split -> 앞에서 하나 뒤에서 하나 재배열
+    def make_up_space(str_list):
+      str_list_new = []
+      for str in str_list:
+        if str!='': str_list_new.append(str)
+      return str_list_new
+    
+    text_new = []
+    for i, str in enumerate(self.text):
+      str = make_up_space(str.split('.'))
+      str_new = []
+      try:
+        for j in range(len(str)//2):
+          str_new.append(str[j])
+          str_new.append(str[-j-1])
+          if j >= 50: break
+      except Exception as e:
+        print(j, e)
+      
+      text_new.append('.'.join(str_new))
+    self.text_processed = text_new
+    # print(text_new)
+
+# %%
 def train_model(args):
   '''
   [1. 전처리 과정에서 생성된 데이터 호출]
@@ -33,17 +107,20 @@ def train_model(args):
   set_seed(args)
 
   train_data = pd.read_csv('../data/train.csv')
-  encoder = LabelEncoder()
-  encoder.fit(train_data['cat3'].unique())
+  
 
   N = train_data.shape[0]
   MAX_LEN = 512
   
   train_idx, valid_idx = train_test_split(np.arange(N))
-
+  encoder = LabelEncoder()
+  encoder.fit(train_data['cat3'].unique())
+  preprocessor = Preprocessor(train_data.loc[train_idx, :])
   # training
   N = train_idx.shape[0]
-  overview = train_data.loc[train_idx, 'overview'].values
+  preprocessor.del_special_char()
+  preprocessor.rearrange_sentence()
+  overview_train = preprocessor.text_processed
   cat3 = encoder.transform(train_data.loc[train_idx, 'cat3'].values)
 
   input_ids = np.zeros((N, MAX_LEN), dtype=int)
@@ -54,7 +131,7 @@ def train_model(args):
 
   for i in tqdm(range(N), position=0, leave=True):
     try:
-      cur_ov = str(overview[i])
+      cur_ov = str(overview_train[i])
       encoded_input = tokenizer(cur_ov, return_tensors='pt', max_length=512,
                                 padding='max_length', truncation=True)
       input_ids[i, ] = encoded_input['input_ids']
@@ -67,8 +144,8 @@ def train_model(args):
   # validating
   N = valid_idx.shape[0]
 
-  overview = train_data.loc[valid_idx, 'overview'].values
-  cat3 = encoder.transform(train_data.loc[valid_idx, 'overview'].values)
+  overview_valid = train_data.loc[valid_idx, 'overview'].values
+  cat3 = encoder.transform(train_data.loc[valid_idx, 'cat3'].values)
 
   valid_input_ids = np.zeros((N, MAX_LEN), dtype=int)
   valid_attention_masks = np.zeros((N, MAX_LEN), dtype=int)
@@ -76,7 +153,7 @@ def train_model(args):
 
   for i in tqdm(range(N), position=0, leave=True):
     try:
-        cur_ov = str(overview[i])
+        cur_ov = str(overview_valid[i])
         encoded_input = tokenizer(cur_ov, return_tensors='pt', max_length=512, padding='max_length', truncation=True)
         valid_input_ids[i, ] = encoded_input['input_ids']
         valid_attention_masks[i, ] = encoded_input['attention_mask']
@@ -113,7 +190,7 @@ def train_model(args):
     def flat_accuracy(preds, labels):
         pred_flat = np.argmax(preds, axis=1).flatten()
         labels_flat = labels.flatten()
-        return np.sum(pred_flat==labels_flat)/len(labels/flat)
+        return np.sum(pred_flat==labels_flat)/len(labels_flat)
     
     def format_time(elapsed):
         elapsed_rounded = int(round((elapsed)))
@@ -136,7 +213,7 @@ def train_model(args):
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
 
     device = torch.device("cuda")
-    loss_f = nn.CrossEntropyLoss()
+    loss_f = torch.nn.CrossEntropyLoss()
 
 
     # Train
@@ -156,7 +233,7 @@ def train_model(args):
                 print('\tBatch {:>5} of {:>5}. \tElapsed: {:}.'.format(step, len(train_dataloader), elapsed))
                 print('\tcurrent average loss = {}'.format(train_loss/step))
 
-                batch = tuple(t.to(device) for t t in batch)
+                batch = tuple(t.to(device) for t in batch)
                 b_input_ids, b_input_mask, b_labels = batch
                 outputs = model(b_input_ids, attention_masks=b_input_mask, labels=b_labels)
                 loss = outputs[0]
@@ -317,7 +394,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.mode == "train":
-        data_preprocess(args) # 수정 필요
         train_model(args)
     else:
         inference_model(args)
